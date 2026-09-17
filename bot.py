@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart
@@ -105,7 +105,7 @@ def advance_text_index(day_type):
     save_state(state)
 
 async def send_scheduled_reminder(day_type):
-    today = datetime.now(pytz.timezone("Asia/Tashkent")).strftime("%Y-%m-%d")
+    today = datetime.now(ZoneInfo("Asia/Tashkent")).strftime("%Y-%m-%d")
     
     if video_status.get("last_sent_date") == today:
         return
@@ -131,7 +131,7 @@ async def send_scheduled_reminder(day_type):
     advance_text_index(day_type)
 
 async def trigger_admin_video_reminder():
-    today_dt = datetime.now(pytz.timezone("Asia/Tashkent"))
+    today_dt = datetime.now(ZoneInfo("Asia/Tashkent"))
     day_type = "mon" if today_dt.weekday() == 0 else "fri"
     
     video_status["waiting"] = True
@@ -151,7 +151,7 @@ async def trigger_admin_video_reminder():
     )
 
 async def hourly_check_video():
-    today = datetime.now(pytz.timezone("Asia/Tashkent")).strftime("%Y-%m-%d")
+    today = datetime.now(ZoneInfo("Asia/Tashkent")).strftime("%Y-%m-%d")
     if video_status["waiting"] and video_status["last_sent_date"] != today:
         await bot.send_message(
             ADMIN_ID,
@@ -206,7 +206,7 @@ async def show_dealers_list(message: types.Message):
 
 @dp.message(F.from_user.id == ADMIN_ID, F.video_note)
 async def admin_video_note(message: types.Message):
-    today = datetime.now(pytz.timezone("Asia/Tashkent")).strftime("%Y-%m-%d")
+    today = datetime.now(ZoneInfo("Asia/Tashkent")).strftime("%Y-%m-%d")
     users = load_users()
     count = 0
     for uid in users.keys():
