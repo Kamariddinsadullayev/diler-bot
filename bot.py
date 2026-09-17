@@ -15,7 +15,6 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
-# Admin boshqaruv tugmasi
 admin_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="👥 Ulangan dilerlar ro'yxati")]
@@ -58,7 +57,7 @@ async def start_handler(message: types.Message):
         await message.answer(
             "Xush kelibsiz, Qamariddin!\n\n"
             "• Dumaloq video yoki matn yuborsangiz, barcha dilerlarga tarqatiladi.\n"
-            "• Dilerlar yuborgan to'lov topshiriqlari (platejkalar) shu yerga keladi.\n"
+            "• Dilerlar yuborgan to'lov topshiriqlari (platejkalar) va xabarlar shu yerga keladi.\n"
             "• Quyidagi tugma orqali ulangan dilerlarni ko'rishingiz mumkin.",
             reply_markup=admin_keyboard
         )
@@ -67,10 +66,10 @@ async def start_handler(message: types.Message):
         await message.answer(
             "Assalomu alaykum, hurmatli hamkor!\n\n"
             "Bu bizning rasmiy axborot va to'lov bildirishnomalari botimiz.\n"
-            "Kompaniya hisob raqamiga to'lov qilingandan so'ng, to'lov topshirig'ini (platejka) shu yerga rasm yoki fayl shaklida yuborishingiz mumkin."
+            "Kompaniya hisob raqamiga to'lov qilingandan so'ng, to'lov topshirig'ini (platejka) shu yerga rasm yoki fayl shaklida yuborishingiz mumkin.\n"
+            "Shuningdek, savollaringiz bo'lsa to'g'ridan-to'g'ri xabar yozishingiz mumkin."
         )
 
-# Dilerlar ro'yxatini ko'rish tugmasi
 @dp.message(F.from_user.id == ADMIN_ID, F.text == "👥 Ulangan dilerlar ro'yxati")
 async def show_dealers_list(message: types.Message):
     users = load_users()
@@ -84,7 +83,6 @@ async def show_dealers_list(message: types.Message):
 
     await message.answer(text, parse_mode="HTML")
 
-# Dumaloq video tarqatish
 @dp.message(F.from_user.id == ADMIN_ID, F.video_note)
 async def admin_video_note(message: types.Message):
     users = load_users()
@@ -98,7 +96,6 @@ async def admin_video_note(message: types.Message):
             pass
     await message.answer(f"Dumaloq video {count} ta dilerga yuborildi!")
 
-# Oddiy matn tarqatish
 @dp.message(F.from_user.id == ADMIN_ID, F.text & ~F.text.startswith("/"))
 async def admin_broadcast_text(message: types.Message):
     users = load_users()
@@ -112,19 +109,36 @@ async def admin_broadcast_text(message: types.Message):
             pass
     await message.answer(f"Xabar {count} ta dilerga yuborildi!")
 
-# Dilerlardan cheklarni qabul qilish
+# Dilerlardan kelgan rasmlar yoki hujjatlarni (platejka) qabul qilish
 @dp.message(F.from_user.id != ADMIN_ID, F.photo | F.document)
 async def diler_payment_slip(message: types.Message):
     user = message.from_user
     full_name = user.full_name
     username = f"@{user.username}" if user.username else "mavjud emas"
-    caption = f"Yangi to'lov topshirig'i (platejka)!\n\nKimdan: {full_name} ({username})\nID: {user.id}"
+    caption = f"📄 <b>Yangi to'lov topshirig'i (platejka)!</b>\n\nKimdan: {full_name} ({username})\nID: <code>{user.id}</code>"
     
     if message.photo:
-        await bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=caption)
+        await bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=caption, parse_mode="HTML")
     elif message.document:
-        await bot.send_document(ADMIN_ID, message.document.file_id, caption=caption)
+        await bot.send_document(ADMIN_ID, message.document.file_id, caption=caption, parse_mode="HTML")
     await message.answer("To'lov topshirig'i qabul qilindi. Rahmat!")
+
+# Dilerlardan kelgan matnli xabarlarni adminga yetkazish
+@dp.message(F.from_user.id != ADMIN_ID, F.text & ~F.text.startswith("/"))
+async def diler_text_message(message: types.Message):
+    user = message.from_user
+    full_name = user.full_name
+    username = f"@{user.username}" if user.username else "mavjud emas"
+    
+    admin_notify = (
+        f"💬 <b>Dilerdan yangi xabar!</b>\n\n"
+        f"<b>Kimdan:</b> {full_name} ({username})\n"
+        f"<b>ID:</b> <code>{user.id}</code>\n\n"
+        f"<b>Xabar matni:</b>\n{message.text}"
+    )
+    
+    await bot.send_message(ADMIN_ID, admin_notify, parse_mode="HTML")
+    await message.answer("Xabaringiz mas'ul xodimga yetkazildi. Tez orada javob beramiz!")
 
 async def handle_ping(request):
     return web.Response(text="Bot is running!")
