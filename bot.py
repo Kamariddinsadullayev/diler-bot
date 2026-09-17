@@ -1,14 +1,13 @@
 import asyncio
 import json
 import os
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 BOT_TOKEN = "8836647954:AAHcaIoFn9Dey8ccviwJ5AapCxP7gZB5Dow"
 ADMIN_ID = 518579722
-
 USERS_FILE = "users.json"
 
 bot = Bot(token=BOT_TOKEN)
@@ -46,15 +45,15 @@ async def start_handler(message: types.Message):
     if user_id == ADMIN_ID:
         await message.answer(
             "Xush kelibsiz, Admin!\n\n"
-            "• Dumaloq video yoki matn yuborsangiz, tasdiqlash orqali barcha dilerlarga tarqatishingiz mumkin.\n"
-            "• Dilerlar yuborgan to'lov cheklari (platejkalar) shu yerga keladi."
+            "• Dumaloq video yoki matn yuborsangiz, barcha dilerlarga tarqatiladi.\n"
+            "• Dilerlar yuborgan to'lov topshiriqlari (platejkalar) shu yerga keladi."
         )
     else:
         save_user(user_id)
         await message.answer(
             "Assalomu alaykum, hurmatli hamkor!\n\n"
-            "Bu bizning rasmiy to'lov va axborot bildirishnomalari botimiz.\n"
-            "Kompaniya hisob raqamiga to'lov qilingandan so'ng, to'lov topshirig'ini (platejka) shu yerga rasm yoki PDF shaklida yuborishingiz mumkin."
+            "Bu bizning rasmiy axborot va to'lov bildirishnomalari botimiz.\n"
+            "Kompaniya hisob raqamiga to'lov qilingandan so'ng, to'lov topshirig'ini (platejka) shu yerga rasm yoki fayl shaklida yuborishingiz mumkin."
         )
 
 @dp.message(F.from_user.id == ADMIN_ID, F.video_note)
@@ -68,7 +67,7 @@ async def admin_video_note(message: types.Message):
             await asyncio.sleep(0.05)
         except Exception:
             pass
-    await message.answer(f"Dumaloq video {count} ta dilerga muvaffaqiyatli yuborildi!")
+    await message.answer(f"Dumaloq video {count} ta dilerga yuborildi!")
 
 @dp.message(F.from_user.id == ADMIN_ID, F.text & ~F.text.startswith("/"))
 async def admin_broadcast_text(message: types.Message):
@@ -81,31 +80,43 @@ async def admin_broadcast_text(message: types.Message):
             await asyncio.sleep(0.05)
         except Exception:
             pass
-    await message.answer(f"Xabar {count} ta dilerga muvaffaqiyatli yuborildi!")
+    await message.answer(f"Xabar {count} ta dilerga yuborildi!")
 
 @dp.message(F.from_user.id != ADMIN_ID, F.photo | F.document)
 async def diler_payment_slip(message: types.Message):
     user = message.from_user
     full_name = user.full_name
     username = f"@{user.username}" if user.username else "mavjud emas"
-    
     caption = f"Yangi to'lov topshirig'i (platejka)!\n\nKimdan: {full_name} ({username})\nID: {user.id}"
     
     if message.photo:
         await bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=caption)
     elif message.document:
         await bot.send_document(ADMIN_ID, message.document.file_id, caption=caption)
-        
-    await message.answer("To'lov topshirig'i qabul qilindi. Tez orada hisobingizga kiritiladi. Rahmat!")
+    await message.answer("To'lov topshirig'i qabul qilindi. Rahmat!")
+
+async def handle_ping(request):
+    return web.Response(text="Bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
 
 async def main():
+    await start_web_server()
+    
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
         day_of_week="mon",
         hour=9,
         minute=30,
-        args=["Assalomu alaykum, hurmatli hamkorlar! Yangi hafta boshlandi. Ushbu haftada rejalashtirilgan yuklaringizni o'z vaqtida chiqarish uchun firma hisob raqamimizga to'lovlarni o'tkazishingizni so'raymiz."],
+        args=["Assalomu alaykum, hurmatli hamkorlar! Yangi hafta boshlandi. Navbatni ushlab qolish va yuklarni o'z vaqtida chiqarish uchun firma hisob raqamimizga to'lovlarni o'tkazishingizni so'raymiz."],
     )
     scheduler.add_job(
         send_scheduled_reminder,
@@ -121,10 +132,10 @@ async def main():
         day_of_week="fri",
         hour=10,
         minute=0,
-        args=["Diqqat! Bank operatsiyalari yakunlanishiga oz vaqt qoldi. Dushanbagacha yuk kutib qolmasligi uchun hisob raqamdan to'lovni bugun soat 16:00 gacha amalga oshirishingizni so'raymiz."],
+        args=["Diqqat! Bank operatsiyalari yakunlanishiga oz vaqt qoldi. Yuk kutib qolmasligi uchun hisob raqamdan to'lovni bugun soat 16:00 gacha amalga oshirishingizni so'raymiz."],
     )
-    
     scheduler.start()
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
