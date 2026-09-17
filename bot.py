@@ -6,7 +6,12 @@ import pytz
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import (
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 BOT_TOKEN = "8836647954:AAHcaIoFn9Dey8ccviwJ5AapCxP7gZB5Dow"
@@ -37,11 +42,21 @@ FRIDAY_TEMPLATES = [
     "Assalomu alaykum, aka yaxshimisiz! Juma ayyomi qutlug' bo'lsin. Hafta yakunida filiallar hisobotlarini topshiryapmiz, siz tomoningizdan hisob raqamga to'lov qilinishi zarur edi. Bugun to'lov topshirig'ini (platejka) tashlab bersangiz juda katta yordam bo'lardi."
 ]
 
+# Admin boshqaruv tugmasi
 admin_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="👥 Ulangan dilerlar ro'yxati")]
     ],
     resize_keyboard=True
+)
+
+# Dilerlar uchun havolali Inline tugmalar
+dealer_links_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="🌐 Rasmiy saytimiz", url="https://sagflooring.uz/ru")],
+        [InlineKeyboardButton(text="📚 Mahsulotlar katalogi", url="https://sites.google.com/view/sag-flooring/%D0%B3%D0%BB%D0%B0%D0%B2%D0%BD%D0%B0%D1%8F-%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B0")],
+        [InlineKeyboardButton(text="✨ Yangi kolleksiyalar", url="https://online.fliphtml5.com/rtyet/katalog_carpet-tile_UZ/#p=1")]
+    ]
 )
 
 def load_users():
@@ -96,7 +111,6 @@ def advance_text_index(day_type):
 async def send_scheduled_reminder(day_type):
     today = datetime.now(pytz.timezone("Asia/Tashkent")).strftime("%Y-%m-%d")
     
-    # Agar admin video tashlagan bo'lsa, zaxira matn yuborilmaydi
     if video_status.get("last_sent_date") == today:
         return
 
@@ -111,7 +125,6 @@ async def send_scheduled_reminder(day_type):
         except Exception:
             pass
 
-    # Adminga nima xabar ketganligi haqida bildirishnoma
     await bot.send_message(
         ADMIN_ID,
         f"📢 <b>Dilerlarga haftalik eslatma yuborildi!</b>\n\n"
@@ -119,14 +132,10 @@ async def send_scheduled_reminder(day_type):
         f"📝 <b>Yuborilgan matn:</b>\n<i>\"{text}\"</i>",
         parse_mode="HTML"
     )
-
-    # Keyingi hafta uchun navbatdagi matnga o'tkazish
     advance_text_index(day_type)
 
-# Adminga 30 minut oldin (09:00 da) bildirish
 async def trigger_admin_video_reminder():
     today_dt = datetime.now(pytz.timezone("Asia/Tashkent"))
-    today = today_dt.strftime("%Y-%m-%d")
     day_type = "mon" if today_dt.weekday() == 0 else "fri"
     
     video_status["waiting"] = True
@@ -145,7 +154,6 @@ async def trigger_admin_video_reminder():
         parse_mode="HTML"
     )
 
-# Har soatda tekshirish
 async def hourly_check_video():
     today = datetime.now(pytz.timezone("Asia/Tashkent")).strftime("%Y-%m-%d")
     if video_status["waiting"] and video_status["last_sent_date"] != today:
@@ -165,16 +173,26 @@ async def start_handler(message: types.Message):
             "Xush kelibsiz, Qamariddin!\n\n"
             "• Dumaloq video yuborsangiz, barcha dilerlarga yetkaziladi va eslatmalar to'xtatiladi.\n"
             "• Dilerlar yuborgan xabarlar va platejkalar shu yerga keladi.\n"
-            "• Har dushanba va juma 09:00 da bot video so'raydi, dilerlarga esa har hafta yangilanadigan matnlar yuboriladi.",
+            "• Har dushanba va juma 09:00 da bot video tayyorlashni eslatadi.",
             reply_markup=admin_keyboard
         )
     else:
         save_user(user)
+        dealer_welcome = (
+            "🌟 <b>Assalomu alaykum, hurmatli hamkor!</b>\n"
+            "🏢 <b>SAG FLOORING</b> rasmiy axborot tizimiga xush kelibsiz!\n\n"
+            "Ushbu bot orqali siz:\n"
+            "🌐 Rasmiy saytimiz\n"
+            "📚 Mahsulotlar katalogi\n"
+            "✨ Yangi kolleksiyalar va pol qoplamalari yangiliklaridan birinchilardan bo‘lib xabardor bo‘lasiz!\n\n"
+            "────────────────\n"
+            "💬 Savol yoki takliflaringiz bo‘lsa, to‘g‘ridan-to‘g‘ri yozib qoldiring.\n"
+            "<i>Savdolaringizga ulkan baraka tilaymiz!</i> 🤝📈"
+        )
         await message.answer(
-            "Assalomu alaykum, hurmatli hamkor!\n\n"
-            "Bu bizning rasmiy axborot va to'lov bildirishnomalari botimiz.\n"
-            "Kompaniya hisob raqamiga to'lov qilingandan so'ng, to'lov topshirig'ini (platejka) shu yerga rasm yoki fayl shaklida yuborishingiz mumkin.\n"
-            "Savollaringiz bo'lsa to'g'ridan-to'g'ri yozishingiz mumkin."
+            dealer_welcome,
+            parse_mode="HTML",
+            reply_markup=dealer_links_keyboard
         )
 
 @dp.message(F.from_user.id == ADMIN_ID, F.text == "👥 Ulangan dilerlar ro'yxati")
@@ -265,7 +283,6 @@ async def start_web_server():
 async def main():
     await start_web_server()
     
-    # Dushanba va Juma 09:00 — Adminga 30 minut oldin ogohlantirish (matn nusxasi bilan)
     scheduler.add_job(
         trigger_admin_video_reminder,
         "cron",
@@ -275,7 +292,6 @@ async def main():
         timezone="Asia/Tashkent",
     )
     
-    # Har soatda (soat 09:30 dan 18:30 gacha) tekshirib eslatish
     scheduler.add_job(
         hourly_check_video,
         "cron",
@@ -285,7 +301,6 @@ async def main():
         timezone="Asia/Tashkent",
     )
     
-    # Dushanba 09:30 — Dilerlarga haftalik navbatdagi matn
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
@@ -296,7 +311,6 @@ async def main():
         args=["mon"],
     )
     
-    # Juma 09:30 — Dilerlarga haftalik navbatdagi matn
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
