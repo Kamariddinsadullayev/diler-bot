@@ -4,84 +4,115 @@ import os
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 BOT_TOKEN = "8836647954:AAHcaIoFn9Dey8ccviwJ5AapCxP7gZB5Dow"
 ADMIN_ID = 518579722
-USERS_FILE = "users.json"
+USERS_FILE = "users_data.json"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
+# Admin boshqaruv tugmasi
+admin_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="👥 Ulangan dilerlar ro'yxati")]
+    ],
+    resize_keyboard=True
+)
+
 def load_users():
     if not os.path.exists(USERS_FILE):
-        return []
+        return {}
     try:
-        with open(USERS_FILE, "r") as f:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return []
+        return {}
 
-def save_user(user_id):
+def save_user(user: types.User):
     users = load_users()
-    if user_id not in users:
-        users.append(user_id)
-        with open(USERS_FILE, "w") as f:
-            json.dump(users, f)
+    str_id = str(user.id)
+    users[str_id] = {
+        "name": user.full_name,
+        "username": f"@{user.username}" if user.username else "mavjud emas"
+    }
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
 
 async def send_scheduled_reminder(text):
     users = load_users()
-    for uid in users:
+    for uid in users.keys():
         try:
-            await bot.send_message(uid, text)
+            await bot.send_message(int(uid), text)
             await asyncio.sleep(0.05)
         except Exception:
             pass
 
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_ID:
+    user = message.from_user
+    if user.id == ADMIN_ID:
         await message.answer(
-            "Xush kelibsiz, Admin!\n\n"
+            "Xush kelibsiz, Qamariddin!\n\n"
             "• Dumaloq video yoki matn yuborsangiz, barcha dilerlarga tarqatiladi.\n"
-            "• Dilerlar yuborgan to'lov topshiriqlari (platejkalar) shu yerga keladi."
+            "• Dilerlar yuborgan to'lov topshiriqlari (platejkalar) shu yerga keladi.\n"
+            "• Quyidagi tugma orqali ulangan dilerlarni ko'rishingiz mumkin.",
+            reply_markup=admin_keyboard
         )
     else:
-        save_user(user_id)
+        save_user(user)
         await message.answer(
             "Assalomu alaykum, hurmatli hamkor!\n\n"
             "Bu bizning rasmiy axborot va to'lov bildirishnomalari botimiz.\n"
             "Kompaniya hisob raqamiga to'lov qilingandan so'ng, to'lov topshirig'ini (platejka) shu yerga rasm yoki fayl shaklida yuborishingiz mumkin."
         )
 
+# Dilerlar ro'yxatini ko'rish tugmasi
+@dp.message(F.from_user.id == ADMIN_ID, F.text == "👥 Ulangan dilerlar ro'yxati")
+async def show_dealers_list(message: types.Message):
+    users = load_users()
+    if not users:
+        await message.answer("Hozircha botga birorta ham diler ulanmagan.")
+        return
+
+    text = f"📋 <b>Ulangan dilerlar soni: {len(users)} ta</b>\n\n"
+    for i, (uid, data) in enumerate(users.items(), start=1):
+        text += f"{i}. {data['name']} ({data['username']}) | ID: <code>{uid}</code>\n"
+
+    await message.answer(text, parse_mode="HTML")
+
+# Dumaloq video tarqatish
 @dp.message(F.from_user.id == ADMIN_ID, F.video_note)
 async def admin_video_note(message: types.Message):
     users = load_users()
     count = 0
-    for uid in users:
+    for uid in users.keys():
         try:
-            await bot.send_video_note(uid, message.video_note.file_id)
+            await bot.send_video_note(int(uid), message.video_note.file_id)
             count += 1
             await asyncio.sleep(0.05)
         except Exception:
             pass
     await message.answer(f"Dumaloq video {count} ta dilerga yuborildi!")
 
+# Oddiy matn tarqatish
 @dp.message(F.from_user.id == ADMIN_ID, F.text & ~F.text.startswith("/"))
 async def admin_broadcast_text(message: types.Message):
     users = load_users()
     count = 0
-    for uid in users:
+    for uid in users.keys():
         try:
-            await bot.send_message(uid, message.text)
+            await bot.send_message(int(uid), message.text)
             count += 1
             await asyncio.sleep(0.05)
         except Exception:
             pass
     await message.answer(f"Xabar {count} ta dilerga yuborildi!")
 
+# Dilerlardan cheklarni qabul qilish
 @dp.message(F.from_user.id != ADMIN_ID, F.photo | F.document)
 async def diler_payment_slip(message: types.Message):
     user = message.from_user
