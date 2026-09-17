@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+from datetime import datetime
+import pytz
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart
@@ -10,10 +12,30 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 BOT_TOKEN = "8836647954:AAHcaIoFn9Dey8ccviwJ5AapCxP7gZB5Dow"
 ADMIN_ID = 518579722
 USERS_FILE = "users_data.json"
+STATE_FILE = "bot_state.json"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
+
+video_status = {
+    "waiting": False,
+    "last_sent_date": None
+}
+
+# Dushanba kunlari aylanadigan matnlar to'plami
+MONDAY_TEMPLATES = [
+    "Assalomu alaykum, aka yaxshimisiz! Yangi hafta muborak bo‘lsin. Bu hafta ishlab chiqarish xom ashyolariga pul chiqarishimiz kerak edi, shuning uchun bugun va 2 yoki 3 kun bizga perechesleniya qilib turing aka, oldindan rahmat!",
+    "Assalomu alaykum, hurmatli hamkor! Yangi ish haftangiz barakali kelsin. Bu haftalik ishlab chiqarish va yuk ortish rejalari shakllantirilmoqda. Yuklaringiz navbatdan kechikmasligi uchun hisob raqamimizga to'lovlarni o'tkazib turishingizni iltimos qilamiz.",
+    "Assalomu alaykum, aka yaxshimisiz! Haftaning boshida yangi partiya tovarlar va xom ashyolar kirib kelmoqda. Hisob-kitoblar to'xtab qolmasligi uchun hisob raqamga mablag' tashlab berishingizni kutib qolamiz. Savdolaringizga baraka!"
+]
+
+# Juma kunlari aylanadigan matnlar to'plami
+FRIDAY_TEMPLATES = [
+    "Assalomu alaykum! Juma ayyomingiz muborak bo'lsin. Bu oy perechesleniyangiz kamayib ketdi, bugun pul tashab tursangiz, shu bilan hafta tugaydi aka, kecha majlisda ham ko'rdik bu oy perechesleniyangiz kamayib ketibdi! Savdolaringizni barakasini bersin.",
+    "Assalomu alaykum, Juma muborak bo'lsin! Bugun haftaning oxirgi bank ish kuni. Keyingi hafta yuklaringizni to'xtovsiz chiqarib berishimiz uchun bugun bank yopilguncha hisob raqamga to'lov qilib berishingizni so'raymiz.",
+    "Assalomu alaykum, aka yaxshimisiz! Juma ayyomi qutlug' bo'lsin. Hafta yakunida filiallar hisobotlarini topshiryapmiz, siz tomoningizdan hisob raqamga to'lov qilinishi zarur edi. Bugun to'lov topshirig'ini (platejka) tashlab bersangiz juda katta yordam bo'lardi."
+]
 
 admin_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -41,14 +63,99 @@ def save_user(user: types.User):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, ensure_ascii=False, indent=2)
 
-async def send_scheduled_reminder(text):
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return {"mon_idx": 0, "fri_idx": 0}
+    try:
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {"mon_idx": 0, "fri_idx": 0}
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+def get_current_text(day_type):
+    state = load_state()
+    if day_type == "mon":
+        idx = state.get("mon_idx", 0) % len(MONDAY_TEMPLATES)
+        return MONDAY_TEMPLATES[idx]
+    else:
+        idx = state.get("fri_idx", 0) % len(FRIDAY_TEMPLATES)
+        return FRIDAY_TEMPLATES[idx]
+
+def advance_text_index(day_type):
+    state = load_state()
+    if day_type == "mon":
+        state["mon_idx"] = (state.get("mon_idx", 0) + 1) % len(MONDAY_TEMPLATES)
+    else:
+        state["fri_idx"] = (state.get("fri_idx", 0) + 1) % len(FRIDAY_TEMPLATES)
+    save_state(state)
+
+async def send_scheduled_reminder(day_type):
+    today = datetime.now(pytz.timezone("Asia/Tashkent")).strftime("%Y-%m-%d")
+    
+    # Agar admin video tashlagan bo'lsa, zaxira matn yuborilmaydi
+    if video_status.get("last_sent_date") == today:
+        return
+
+    text = get_current_text(day_type)
     users = load_users()
+    count = 0
     for uid in users.keys():
         try:
             await bot.send_message(int(uid), text)
+            count += 1
             await asyncio.sleep(0.05)
         except Exception:
             pass
+
+    # Adminga nima xabar ketganligi haqida bildirishnoma
+    await bot.send_message(
+        ADMIN_ID,
+        f"📢 <b>Dilerlarga haftalik eslatma yuborildi!</b>\n\n"
+        f"👥 <b>Qabul qildi:</b> {count} ta diler\n"
+        f"📝 <b>Yuborilgan matn:</b>\n<i>\"{text}\"</i>",
+        parse_mode="HTML"
+    )
+
+    # Keyingi hafta uchun navbatdagi matnga o'tkazish
+    advance_text_index(day_type)
+
+# Adminga 30 minut oldin (09:00 da) bildirish
+async def trigger_admin_video_reminder():
+    today_dt = datetime.now(pytz.timezone("Asia/Tashkent"))
+    today = today_dt.strftime("%Y-%m-%d")
+    day_type = "mon" if today_dt.weekday() == 0 else "fri"
+    
+    video_status["waiting"] = True
+    video_status["last_sent_date"] = None
+    
+    scheduled_text = get_current_text(day_type)
+    
+    await bot.send_message(
+        ADMIN_ID,
+        f"⚠️ <b>Qamariddin, diqqat!</b>\n\n"
+        f"30 daqiqadan so'ng (09:30 da) dilerlarga haftalik xabarnoma boradi.\n"
+        f"Iltimos, dilerlar uchun <b>dumaloq video</b> yuboring!\n\n"
+        f"<i>Agar video yubormasangiz, soat 09:30 da quyidagi matn avtomatik ketadi:</i>\n"
+        f"👉 <i>\"{scheduled_text}\"</i>\n\n"
+        f"<i>(Video kelmasa, bot har soatda sizga eslatib turadi)</i>",
+        parse_mode="HTML"
+    )
+
+# Har soatda tekshirish
+async def hourly_check_video():
+    today = datetime.now(pytz.timezone("Asia/Tashkent")).strftime("%Y-%m-%d")
+    if video_status["waiting"] and video_status["last_sent_date"] != today:
+        await bot.send_message(
+            ADMIN_ID,
+            "🔔 <b>Eslatma!</b>\n\n"
+            "Dilerlarga yuboriladigan dumaloq video hali qabul qilinmadi. "
+            "Iltimos, dumaloq video yuboring!",
+            parse_mode="HTML"
+        )
 
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
@@ -56,9 +163,9 @@ async def start_handler(message: types.Message):
     if user.id == ADMIN_ID:
         await message.answer(
             "Xush kelibsiz, Qamariddin!\n\n"
-            "• Dumaloq video yoki matn yuborsangiz, barcha dilerlarga tarqatiladi.\n"
-            "• Dilerlar yuborgan to'lov topshiriqlari (platejkalar) va xabarlar shu yerga keladi.\n"
-            "• Quyidagi tugma orqali ulangan dilerlarni ko'rishingiz mumkin.",
+            "• Dumaloq video yuborsangiz, barcha dilerlarga yetkaziladi va eslatmalar to'xtatiladi.\n"
+            "• Dilerlar yuborgan xabarlar va platejkalar shu yerga keladi.\n"
+            "• Har dushanba va juma 09:00 da bot video so'raydi, dilerlarga esa har hafta yangilanadigan matnlar yuboriladi.",
             reply_markup=admin_keyboard
         )
     else:
@@ -67,7 +174,7 @@ async def start_handler(message: types.Message):
             "Assalomu alaykum, hurmatli hamkor!\n\n"
             "Bu bizning rasmiy axborot va to'lov bildirishnomalari botimiz.\n"
             "Kompaniya hisob raqamiga to'lov qilingandan so'ng, to'lov topshirig'ini (platejka) shu yerga rasm yoki fayl shaklida yuborishingiz mumkin.\n"
-            "Shuningdek, savollaringiz bo'lsa to'g'ridan-to'g'ri xabar yozishingiz mumkin."
+            "Savollaringiz bo'lsa to'g'ridan-to'g'ri yozishingiz mumkin."
         )
 
 @dp.message(F.from_user.id == ADMIN_ID, F.text == "👥 Ulangan dilerlar ro'yxati")
@@ -85,6 +192,7 @@ async def show_dealers_list(message: types.Message):
 
 @dp.message(F.from_user.id == ADMIN_ID, F.video_note)
 async def admin_video_note(message: types.Message):
+    today = datetime.now(pytz.timezone("Asia/Tashkent")).strftime("%Y-%m-%d")
     users = load_users()
     count = 0
     for uid in users.keys():
@@ -94,7 +202,11 @@ async def admin_video_note(message: types.Message):
             await asyncio.sleep(0.05)
         except Exception:
             pass
-    await message.answer(f"Dumaloq video {count} ta dilerga yuborildi!")
+            
+    video_status["waiting"] = False
+    video_status["last_sent_date"] = today
+    
+    await message.answer(f"✅ Dumaloq video {count} ta dilerga muvaffaqiyatli tarqatildi!\nEslatmalar to'xtatildi.")
 
 @dp.message(F.from_user.id == ADMIN_ID, F.text & ~F.text.startswith("/"))
 async def admin_broadcast_text(message: types.Message):
@@ -109,7 +221,6 @@ async def admin_broadcast_text(message: types.Message):
             pass
     await message.answer(f"Xabar {count} ta dilerga yuborildi!")
 
-# Dilerlardan kelgan rasmlar yoki hujjatlarni (platejka) qabul qilish
 @dp.message(F.from_user.id != ADMIN_ID, F.photo | F.document)
 async def diler_payment_slip(message: types.Message):
     user = message.from_user
@@ -123,7 +234,6 @@ async def diler_payment_slip(message: types.Message):
         await bot.send_document(ADMIN_ID, message.document.file_id, caption=caption, parse_mode="HTML")
     await message.answer("To'lov topshirig'i qabul qilindi. Rahmat!")
 
-# Dilerlardan kelgan matnli xabarlarni adminga yetkazish
 @dp.message(F.from_user.id != ADMIN_ID, F.text & ~F.text.startswith("/"))
 async def diler_text_message(message: types.Message):
     user = message.from_user
@@ -138,7 +248,7 @@ async def diler_text_message(message: types.Message):
     )
     
     await bot.send_message(ADMIN_ID, admin_notify, parse_mode="HTML")
-    await message.answer("Xabaringiz mas'ul xodimga yetkazildi. Tez orada javob beramiz!")
+    await message.answer("Xabaringiz yetkazildi. Tez orada aloqaga chiqamiz!")
 
 async def handle_ping(request):
     return web.Response(text="Bot is running!")
@@ -155,7 +265,27 @@ async def start_web_server():
 async def main():
     await start_web_server()
     
-    # Dushanba 09:30 (Toshkent vaqti)
+    # Dushanba va Juma 09:00 — Adminga 30 minut oldin ogohlantirish (matn nusxasi bilan)
+    scheduler.add_job(
+        trigger_admin_video_reminder,
+        "cron",
+        day_of_week="mon,fri",
+        hour=9,
+        minute=0,
+        timezone="Asia/Tashkent",
+    )
+    
+    # Har soatda (soat 09:30 dan 18:30 gacha) tekshirib eslatish
+    scheduler.add_job(
+        hourly_check_video,
+        "cron",
+        day_of_week="mon,fri",
+        hour="9-18",
+        minute=30,
+        timezone="Asia/Tashkent",
+    )
+    
+    # Dushanba 09:30 — Dilerlarga haftalik navbatdagi matn
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
@@ -163,10 +293,10 @@ async def main():
         hour=9,
         minute=30,
         timezone="Asia/Tashkent",
-        args=["Assalomu alaykum, hurmatli hamkorlar! Yangi hafta boshlandi. Navbatni ushlab qolish va rejalashtirilgan yuklarni o'z vaqtida chiqarish uchun firma hisob raqamimizga to'lovlarni o'tkazishingizni so'raymiz."],
+        args=["mon"],
     )
     
-    # Juma 09:30 (Toshkent vaqti)
+    # Juma 09:30 — Dilerlarga haftalik navbatdagi matn
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
@@ -174,7 +304,7 @@ async def main():
         hour=9,
         minute=30,
         timezone="Asia/Tashkent",
-        args=["Assalomu alaykum, hurmatli hamkorlar! Bugun hafta yakuni va bank amaliyotlari kuni. Yuk kutib qolmasligi va navbat kechikmasligi uchun hisob raqamdan to'lovni bugun amalga oshirishingizni so'raymiz."],
+        args=["fri"],
     )
     
     scheduler.start()
