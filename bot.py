@@ -110,32 +110,29 @@ async def start_web_server():
 async def main():
     await start_web_server()
     
+    # Dushanba 09:30 (Toshkent vaqti)
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
         day_of_week="mon",
         hour=9,
         minute=30,
-        args=["Assalomu alaykum, hurmatli hamkorlar! Yangi hafta boshlandi. Navbatni ushlab qolish va yuklarni o'z vaqtida chiqarish uchun firma hisob raqamimizga to'lovlarni o'tkazishingizni so'raymiz."],
+        timezone="Asia/Tashkent",
+        args=["Assalomu alaykum, hurmatli hamkorlar! Yangi hafta boshlandi. Navbatni ushlab qolish va rejalashtirilgan yuklarni o'z vaqtida chiqarish uchun firma hisob raqamimizga to'lovlarni o'tkazishingizni so'raymiz."],
     )
-    scheduler.add_job(
-        send_scheduled_reminder,
-        "cron",
-        day_of_week="wed",
-        hour=11,
-        minute=0,
-        args=["Hurmatli hamkor, firma hisob raqamimizga to'lov amalga oshirilgan bo'lsa, to'lov topshirig'ini (platejka) botga yuklashingizni so'raymiz."],
-    )
+    
+    # Juma 09:30 (Toshkent vaqti)
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
         day_of_week="fri",
-        hour=10,
-        minute=0,
-        args=["Diqqat! Bank operatsiyalari yakunlanishiga oz vaqt qoldi. Yuk kutib qolmasligi uchun hisob raqamdan to'lovni bugun soat 16:00 gacha amalga oshirishingizni so'raymiz."],
+        hour=9,
+        minute=30,
+        timezone="Asia/Tashkent",
+        args=["Assalomu alaykum, hurmatli hamkorlar! Bugun hafta yakuni va bank amaliyotlari kuni. Yuk kutib qolmasligi va navbat kechikmasligi uchun hisob raqamdan to'lovni bugun amalga oshirishingizni so'raymiz."],
     )
-    scheduler.start()
     
+    scheduler.start()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
