@@ -28,21 +28,21 @@ video_status = {
     "last_sent_date": None
 }
 
-# Dushanba kunlari aylanadigan matnlar to'plami
+# Dushanba kunlari navbatma-navbat aylanadigan eslatmalar
 MONDAY_TEMPLATES = [
     "Assalomu alaykum, aka yaxshimisiz! Yangi hafta muborak bo‘lsin. Bu hafta ishlab chiqarish xom ashyolariga pul chiqarishimiz kerak edi, shuning uchun bugun va 2 yoki 3 kun bizga perechesleniya qilib turing aka, oldindan rahmat!",
     "Assalomu alaykum, hurmatli hamkor! Yangi ish haftangiz barakali kelsin. Bu haftalik ishlab chiqarish va yuk ortish rejalari shakllantirilmoqda. Yuklaringiz navbatdan kechikmasligi uchun hisob raqamimizga to'lovlarni o'tkazib turishingizni iltimos qilamiz.",
     "Assalomu alaykum, aka yaxshimisiz! Haftaning boshida yangi partiya tovarlar va xom ashyolar kirib kelmoqda. Hisob-kitoblar to'xtab qolmasligi uchun hisob raqamga mablag' tashlab berishingizni kutib qolamiz. Savdolaringizga baraka!"
 ]
 
-# Juma kunlari aylanadigan matnlar to'plami
+# Juma kunlari navbatma-navbat aylanadigan eslatmalar
 FRIDAY_TEMPLATES = [
     "Assalomu alaykum! Juma ayyomingiz muborak bo'lsin. Bu oy perechesleniyangiz kamayib ketdi, bugun pul tashab tursangiz, shu bilan hafta tugaydi aka, kecha majlisda ham ko'rdik bu oy perechesleniyangiz kamayib ketibdi! Savdolaringizni barakasini bersin.",
     "Assalomu alaykum, Juma muborak bo'lsin! Bugun haftaning oxirgi bank ish kuni. Keyingi hafta yuklaringizni to'xtovsiz chiqarib berishimiz uchun bugun bank yopilguncha hisob raqamga to'lov qilib berishingizni so'raymiz.",
     "Assalomu alaykum, aka yaxshimisiz! Juma ayyomi qutlug' bo'lsin. Hafta yakunida filiallar hisobotlarini topshiryapmiz, siz tomoningizdan hisob raqamga to'lov qilinishi zarur edi. Bugun to'lov topshirig'ini (platejka) tashlab bersangiz juda katta yordam bo'lardi."
 ]
 
-# Admin boshqaruv tugmasi
+# Admin uchun pastki menyu tugmasi
 admin_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="👥 Ulangan dilerlar ro'yxati")]
@@ -50,7 +50,7 @@ admin_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Dilerlar uchun havolali Inline tugmalar
+# Dilerlar uchun xabar tagidagi 3 ta tugma
 dealer_links_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="🌐 Rasmiy saytimiz", url="https://sagflooring.uz/ru")],
@@ -283,6 +283,7 @@ async def start_web_server():
 async def main():
     await start_web_server()
     
+    # Dushanba va Juma 09:00 — Adminga eslatma
     scheduler.add_job(
         trigger_admin_video_reminder,
         "cron",
@@ -292,6 +293,7 @@ async def main():
         timezone="Asia/Tashkent",
     )
     
+    # Har soatda (soat 09:30 dan 18:30 gacha) tekshirish
     scheduler.add_job(
         hourly_check_video,
         "cron",
@@ -301,6 +303,7 @@ async def main():
         timezone="Asia/Tashkent",
     )
     
+    # Dushanba 09:30 — Dilerlarga eslatma
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
@@ -311,6 +314,7 @@ async def main():
         args=["mon"],
     )
     
+    # Juma 09:30 — Dilerlarga eslatma
     scheduler.add_job(
         send_scheduled_reminder,
         "cron",
